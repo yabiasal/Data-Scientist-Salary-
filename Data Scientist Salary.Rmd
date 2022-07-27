@@ -1,0 +1,374 @@
+---
+title: "DataScientist Salary"
+author: "Asal"
+date: "3/8/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+#0. installing required packages and libararies
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+install.packages("xlsx")
+install.packages("validate")
+install.packages("dplyr")
+
+library(magrittr)
+library(dplyr)
+library(validate)
+library(stringr)
+library(tidyr)
+library(tidyverse)
+require(stringr)
+
+```
+
+
+#1. Cleaning Dataset
+
+#1.1 First insight from data
+```{r}
+# Loading data into a dataframe 
+salary_df <- read.csv("data_cleaned_2021.csv")
+
+# Getting insight from data
+names(salary_df)
+str(salary_df)
+summary(salary_df)
+```
+
+#1.2 Omitting the variables that are not required for data visulaization. 
+
+```{r}
+# Removing unnecessary columns
+names(salary_df)
+salary_df1 <- salary_df[,c(-2,-3,-4,-6,-8,-10,-12,-15,-16,-17,-18,-19,-21,-22,-40)]
+names(salary_df1)
+
+#Rating has around 1.5% of missing values. Therefor, we can keep and use this variable to derive information from.  
+table(salary_df1$Rating)
+table(salary_df1$Rating)/length(salary_df1$Rating)*100
+
+table(salary_df$seniority_by_title)
+table(salary_df$seniority_by_title)/length(salary_df1$seniority_by_title)*100
+
+# Location does not have any missing values. However, the name of the city and state is written in one cell which should be separated for mapping in Tableau. 
+table(salary_df1$Location)/length(salary_df1$Location)*100
+
+# Size column should be kept as it has merely, 1.3% unknown values. 
+table(salary_df1$Size)
+table(salary_df1$Size)/length(salary_df1$Size)*100
+
+# Age has approximately 7% of missing values. Removing missing value in Age column does not affect the information derived from this column as it is less than 10%.
+table(salary_df1$Age)
+table(salary_df1$Age)/length(salary_df1$Age)*100
+
+# As the percentage of NAs in Seniority_by_title and Degree is about 70% and 52% respectively, it seems that we cannot extract information from these columns and it is better to omit these two columns.
+table(salary_df1$seniority_by_title)
+table(salary_df1$seniority_by_title)/length(salary_df1$seniority_by_title)*100
+
+# 51.6% of the information in Degree is NA. As it is higher than 10%, we cannot extract information and it is better to remove this column.
+table(salary_df1$Degree)
+table(salary_df1$Degree)/length(salary_df1$Degree)*100
+
+# 27.5% of Revenue variable is Unknown. Therefore, this variable has not enough instances to derive information from.
+table(salary_df1$Revenue)
+table(salary_df1$Revenue)/length(salary_df1$Revenue)*100
+
+# Conclusion
+names(salary_df1)
+salary_df2 <- salary_df1[,c(-7,-26,-27)]
+
+summary(salary_df2)
+str(salary_df2)
+```
+
+# 1.3 Quality Checking
+
+```{r}
+# Check data types
+is.numeric(salary_df2$Rating)
+is.numeric(salary_df2$Avg.Salary.K.)
+is.integer(salary_df2$Age)
+
+# Quality Checking
+salary_rules <- validator(
+  #unique index
+  unique_index = is_unique(index),
+  #Average salary should be positive
+  Avg.Salary.K. >= 0,
+  #Age should not be negative 
+  Age >= 0,
+  #Rating should be from 0 to 5
+  rating_range = in_range(Rating,0,5)
+)
+
+checking_quality <- confront(salary_df2,salary_rules)
+summary(checking_quality)
+
+plot(checking_quality, xlab = "")
+
+```
+
+
+# 1.4 Cleaning Data
+```{r}
+#-1 values in Age, Average Salary, and rating are indicating missing values and should be first converted to NA and then omitted.  
+salary_df2[salary_df2 == -1] <- NA
+
+salary_df2[complete.cases(salary_df2), ]
+
+summary(salary_df2)
+
+salary_df2 <- na.omit(salary_df2)
+salary_df2
+
+# check to ensure that all observations have the same format of the name of the city and state
+salary_df2 %>% filter(stringr::str_count(Location, ",") > 1)
+
+# One observation has more than one string after comma with the index 145 (We have checked that indexes are unique). Therefore, this observation should be omitted. 
+salary_df3 <- salary_df2[salary_df2$index != "145",]
+
+# Separating city and state into two columns.
+salary_df4 <- 
+salary_df3 %>%
+    separate(Location, into = c('City', 'State'), sep = ',')
+
+str(salary_df4)
+
+# Checking the quality of the data after cleaning
+checking_quality <- confront(salary_df4,salary_rules)
+summary(checking_quality)
+
+plot(checking_quality, xlab = "")
+
+```
+
+
+# 1.5 Creating the new Dataset for Skill
+```{r}
+# calculating how many companies require a specific skill and repeating the same process for each skill
+python_requirement <- sum(salary_df4$Python)
+python_requirement
+
+# calculating the average of Avg.Salary.K. and average rating for each skill in case of that skill being required for joining a company. 
+python_salary <- sum(salary_df4[salary_df4$Python==1,]$Avg.Salary.K.)
+python_avg_salary <- python_salary/python_requirement
+python_avg_salary
+
+python_avg_rating <- sum(salary_df4[salary_df4$Python==1,]$Rating)/python_requirement
+python_avg_rating
+
+spark_requirement <- sum(salary_df4$spark)
+spark_requirement
+
+spark_salary <- sum(salary_df4[salary_df4$spark==1,]$Avg.Salary.K.)
+spark_avg_salary <- spark_salary/spark_requirement
+spark_avg_salary
+
+spark_avg_rating <- sum(salary_df4[salary_df4$spark==1,]$Rating)/spark_requirement
+spark_avg_rating
+
+aws_requirement <- sum(salary_df4$aws)
+aws_requirement
+
+aws_salary <- sum(salary_df4[salary_df4$aws==1,]$Avg.Salary.K.)
+aws_avg_salary <- aws_salary/aws_requirement
+aws_avg_salary
+
+aws_avg_rating <- sum(salary_df4[salary_df4$aws==1,]$Rating)/aws_requirement
+aws_avg_rating
+
+excel_requirement <- sum(salary_df4$excel)
+excel_requirement
+
+excel_salary <- sum(salary_df4[salary_df4$excel==1,]$Avg.Salary.K.)
+excel_avg_salary <- excel_salary/excel_requirement
+excel_avg_salary
+
+excel_avg_rating <- sum(salary_df4[salary_df4$excel==1,]$Rating)/excel_requirement
+excel_avg_rating
+
+SQL_requirement <- sum(salary_df4$sql)
+SQL_requirement
+
+SQL_salary <- sum(salary_df4[salary_df4$sql==1,]$Avg.Salary.K.)
+SQL_avg_salary <- SQL_salary/SQL_requirement
+SQL_avg_salary
+
+SQL_avg_rating <- sum(salary_df4[salary_df4$sql==1,]$Rating)/SQL_requirement
+SQL_avg_rating
+
+SAS_requirement <- sum(salary_df4$sas)
+SAS_requirement
+
+SAS_salary <- sum(salary_df4[salary_df4$sas==1,]$Avg.Salary.K.)
+SAS_avg_salary <- SAS_salary/SAS_requirement
+SAS_avg_salary
+
+SAS_avg_rating <- sum(salary_df4[salary_df4$sas==1,]$Rating)/SAS_requirement
+SAS_avg_rating
+
+Keras_requirement <- sum(salary_df4$keras)
+Keras_requirement
+
+keras_salary <- sum(salary_df4[salary_df4$keras==1,]$Avg.Salary.K.)
+keras_avg_salary <- keras_salary/Keras_requirement
+keras_avg_salary
+
+keras_avg_rating <- sum(salary_df4[salary_df4$keras==1,]$Rating)/Keras_requirement
+keras_avg_rating
+
+pytorch_requirement <- sum(salary_df4$pytorch)
+pytorch_requirement
+
+pytorch_salary <- sum(salary_df4[salary_df4$pytorch==1,]$Avg.Salary.K.)
+pytorch_avg_salary <- pytorch_salary/pytorch_requirement
+pytorch_avg_salary
+
+pytorch_avg_rating <- sum(salary_df4[salary_df4$pytorch==1,]$Rating)/pytorch_requirement
+pytorch_avg_rating
+
+scickit_requirement <- sum(salary_df4$scikit)
+scickit_requirement
+
+scickit_salary <- sum(salary_df4[salary_df4$scikit==1,]$Avg.Salary.K.)
+scickit_avg_salary <- scickit_salary/scickit_requirement
+scickit_avg_salary
+
+scickit_avg_rating <- sum(salary_df4[salary_df4$scikit==1,]$Rating)/scickit_requirement
+scickit_avg_rating
+
+tensor_requirement <- sum(salary_df4$tensor)
+tensor_requirement
+
+tensor_salary <- sum(salary_df4[salary_df4$tensor==1,]$Avg.Salary.K.)
+tensor_avg_salary <- tensor_salary/tensor_requirement
+tensor_avg_salary
+
+tensor_avg_rating <- sum(salary_df4[salary_df4$tensor==1,]$Rating)/tensor_requirement
+tensor_avg_rating
+
+hadoop_requirement <- sum(salary_df4$hadoop)
+hadoop_requirement
+
+hadoop_salary <- sum(salary_df4[salary_df4$hadoop==1,]$Avg.Salary.K.)
+hadoop_avg_salary <- hadoop_salary/hadoop_requirement
+hadoop_avg_salary
+
+hadoop_avg_rating <- sum(salary_df4[salary_df4$hadoop==1,]$Rating)/hadoop_requirement
+hadoop_avg_rating
+
+tableau_requirement <- sum(salary_df4$tableau)
+tableau_requirement
+
+tableau_salary <- sum(salary_df4[salary_df4$spark==1,]$Avg.Salary.K.)
+tableau_avg_salary <- tableau_salary/spark_requirement
+tableau_avg_salary
+
+tableau_avg_rating <- sum(salary_df4[salary_df4$tableau==1,]$Rating)/tableau_requirement
+tableau_avg_rating
+
+bi_requirement <- sum(salary_df4$bi)
+bi_requirement
+
+bi_salary <- sum(salary_df4[salary_df4$bi==1,]$Avg.Salary.K.)
+bi_avg_salary <- bi_salary/bi_requirement
+bi_avg_salary
+
+bi_avg_rating <- sum(salary_df4[salary_df4$bi==1,]$Rating)/bi_requirement
+bi_avg_rating
+
+flink_requirement <- sum(salary_df4$flink)
+flink_requirement
+
+flink_salary <- sum(salary_df4[salary_df4$flink==1,]$Avg.Salary.K.)
+flink_avg_salary <- flink_salary/flink_requirement
+flink_avg_salary
+
+flink_avg_rating <- sum(salary_df4[salary_df4$flink==1,]$Rating)/flink_requirement
+flink_avg_rating
+
+mongo_requirement <- sum(salary_df4$mongo)
+mongo_requirement
+
+mongo_salary <- sum(salary_df4[salary_df4$mongo==1,]$Avg.Salary.K.)
+mongo_avg_salary <- mongo_salary/mongo_requirement
+mongo_avg_salary
+
+mongo_avg_rating <- sum(salary_df4[salary_df4$mongo==1,]$Rating)/mongo_requirement
+mongo_avg_rating
+
+google_an_requirement <- sum(salary_df4$google_an)
+google_an_requirement
+
+google_an_salary <- sum(salary_df4[salary_df4$google_an==1,]$Avg.Salary.K.)
+google_an_avg_salary <- google_an_salary/google_an_requirement
+google_an_avg_salary
+
+google_an_avg_rating <- sum(salary_df4[salary_df4$google_an==1,]$Rating)/google_an_requirement
+google_an_avg_rating
+
+# Creating the dataset from calculated variabels for each skill
+Skill <- c("Python","Spark","AWS","excel","SQL","SAS","Keras","Pytorch","Scickit","Tensor","Hadoop","Tableau","PowerBi","Flink","Mongo","google_AN")
+
+Count <- c(python_requirement,spark_requirement,aws_requirement,excel_requirement,SQL_requirement,SAS_requirement,Keras_requirement,pytorch_requirement,scickit_requirement,tensor_requirement,hadoop_requirement,tableau_requirement,bi_requirement,flink_requirement,mongo_requirement,google_an_requirement)
+
+skillbased_avg_salary <- c(python_avg_salary,spark_avg_salary,aws_avg_salary,excel_avg_salary,SQL_avg_salary,SAS_avg_salary,keras_avg_salary,pytorch_avg_salary,scickit_avg_salary,tensor_avg_salary,hadoop_avg_salary,tableau_avg_salary,bi_avg_salary,flink_avg_salary,mongo_avg_salary,google_an_avg_salary)
+
+
+skillbased_avg_rating <- c(python_avg_rating,spark_avg_rating,aws_avg_rating,excel_avg_rating,SQL_avg_rating,SAS_avg_rating,keras_avg_rating,pytorch_avg_rating,scickit_avg_rating,tensor_avg_rating,hadoop_avg_rating,tableau_avg_rating,bi_avg_rating,flink_avg_rating,mongo_avg_rating,google_an_avg_rating)
+
+
+SkillCount_df <- data.frame(Skill, Count, skillbased_avg_salary, skillbased_avg_rating)
+
+print(SkillCount_df)
+
+head(SkillCount_df)
+ str(SkillCount_df)
+
+# Extracting the .csv fi file from the dataset. 
+write.csv(salary_df4,"F:/Documents/MSc Data Science & Analytics/Data Visualization/Coursework/Cleaned_Salary.csv", row.names = TRUE)
+
+write.csv(SkillCount_df,"F:/Documents/MSc Data Science & Analytics/Data Visualization/Coursework/SkillDataset.csv", row.names = TRUE)
+
+```
+
+
+# 2.2 Clustering
+```{r}
+# Scatter plot
+str(SkillCount_df)
+plot(skillbased_avg_salary ~ skillbased_avg_rating, SkillCount_df)
+plot(skillbased_avg_salary ~ Count, SkillCount_df)
+
+# Normalization
+num_SkillCountdf <- SkillCount_df[,c(-1)]
+m <- apply(num_SkillCountdf, 2, mean)
+s <- apply(num_SkillCountdf, 2, sd)
+normalized_SkillCountdf <- scale(num_SkillCountdf, m, s)
+
+# Calculate Euclidean Distance
+EU_distance <- dist(normalized_SkillCountdf)
+print(EU_distance,digits=3)
+
+# Cluster Dendogram with Complete Linkage 
+plot(hclust(EU_distance), labels = SkillCount_df$Skill, hang = -1)
+
+# Cluster Membership
+
+# Cluster means
+
+# Silhouette Plot
+library(cluster)
+
+# Scree Plot
+
+# K-Means Clustering
+kc <- kmeans(normalized_SkillCountdf, 4)
+plot(Count~skillbased_avg_salary, SkillCount_df, col = kc$cluster)
+```
+
